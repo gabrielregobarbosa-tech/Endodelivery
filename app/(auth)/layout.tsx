@@ -1,0 +1,5 @@
+import { Brand } from '@/components/brand';
+import { Sparkles, ShieldCheck, HeartPulse } from 'lucide-react';
+export default function AuthLayout({ children }: { children: React.ReactNode }) {
+  return <main className="auth-layout"><section className="auth-story"><Brand /><div className="auth-story-body"><span className="auth-pill"><Sparkles size={15} /> Feito para endodontistas</span><h1>Mais tempo para<br />o que importa.<br /><em>Seu paciente.</em></h1><p>Prontuários, agenda e documentos.<br />A sua rotina clínica, em um só lugar.</p><div className="auth-illustration"><div className="illustration-card"><span className="illustration-icon"><HeartPulse size={27} /></span><div><strong>Cuidado que acompanha você</strong><small>Do primeiro atendimento ao relatório.</small></div><span className="illustration-dot" /></div></div></div><div className="auth-story-footer"><ShieldCheck size={17} /> Uma experiência pensada para o cuidado.</div></section><section className="auth-form-section"><div className="auth-mobile-brand"><Brand /></div>{children}<p className="auth-footer">EndoDelivery · Sua clínica, mais próxima de você.</p></section></main>;
+}
