@@ -51,8 +51,8 @@ export async function createSession(userId: string): Promise<void> {
   const token = randomBytes(32).toString("base64url");
   const db = getDb();
   const now = new Date();
-  db.prepare("DELETE FROM sessions WHERE expires_at <= ?").run(now.toISOString());
-  db.prepare("INSERT INTO sessions(token_hash,user_id,expires_at) VALUES (?,?,?)").run(
+  await db.prepare("DELETE FROM sessions WHERE expires_at <= ?").run(now.toISOString());
+  await db.prepare("INSERT INTO sessions(token_hash,user_id,expires_at) VALUES (?,?,?)").run(
     hashSessionToken(token), userId, new Date(now.getTime() + SESSION_SECONDS * 1000).toISOString(),
   );
   const cookieStore = await cookies();
@@ -62,7 +62,7 @@ export async function createSession(userId: string): Promise<void> {
 export async function deleteSession(): Promise<void> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
-  if (token) getDb().prepare("DELETE FROM sessions WHERE token_hash = ?").run(hashSessionToken(token));
+  if (token) await getDb().prepare("DELETE FROM sessions WHERE token_hash = ?").run(hashSessionToken(token));
   cookieStore.set(SESSION_COOKIE, "", { ...sessionCookieOptions, maxAge: 0 });
 }
 
@@ -72,7 +72,7 @@ export async function requireUser(): Promise<User> {
   if (!token || !/^[A-Za-z0-9_-]{43}$/.test(token)) {
     throw new HttpError(401, "Entre na sua conta para continuar.");
   }
-  const row = getDb().prepare(`
+  const row = await getDb().prepare(`
     SELECT users.id, users.name, users.email
     FROM users JOIN sessions ON sessions.user_id = users.id
     WHERE sessions.token_hash = ? AND sessions.expires_at > ?
@@ -82,47 +82,40 @@ export async function requireUser(): Promise<User> {
 }
 
 /** Create an account and its editable empty clinical templates atomically. */
-export function insertAccount(input: User & { passwordHash: string }): void {
-  const db = getDb();
-  db.exec("BEGIN IMMEDIATE");
-  try {
-    db.prepare("INSERT INTO users(id,name,email,password_hash) VALUES (?,?,?,?)")
+export async function insertAccount(input: User & { passwordHash: string }): Promise<void> {
+  await getDb().transaction(async (db) => {
+    await db.prepare("INSERT INTO users(id,name,email,password_hash) VALUES (?,?,?,?)")
       .run(input.id, input.name, input.email, input.passwordHash);
-    db.prepare("INSERT INTO profiles(user_id,name,email) VALUES (?,?,?)")
+    await db.prepare("INSERT INTO profiles(user_id,name,email) VALUES (?,?,?)")
       .run(input.id, input.name, input.email);
     const insertTemplate = db.prepare("INSERT INTO templates(id,user_id,title,kind,content) VALUES (?,?,?,?,?)");
-    insertTemplate.run(randomUUID(), input.id, "Receituário", "prescription",
+    await insertTemplate.run(randomUUID(), input.id, "Receituário", "prescription",
       "Paciente: {{paciente}}\nData: {{data}}\n\n[Insira a prescrição individualizada: medicamento, concentração, posologia e duração.]\n\n{{profissional}}\nCRO: {{cro}}");
-    insertTemplate.run(randomUUID(), input.id, "Orientações pós-operatórias", "post_op",
+    await insertTemplate.run(randomUUID(), input.id, "Orientações pós-operatórias", "post_op",
       "Paciente: {{paciente}}\nData: {{data}}\n\n[Registre as orientações individualizadas, cuidados e sinais que exigem contato com o profissional.]\n\n{{profissional}}\nCRO: {{cro}}");
-    db.exec("COMMIT");
-  } catch (error) {
-    db.exec("ROLLBACK");
-    throw error;
-  }
+  });
 }
 
-interface AttemptWindow { count: number; resetAt: number }
-const globals = globalThis as unknown as { endoDeliveryAuthAttempts?: Map<string, AttemptWindow> };
-const attempts = globals.endoDeliveryAuthAttempts ??= new Map<string, AttemptWindow>();
-
 /** Use a trusted reverse proxy that overwrites incoming client IP headers in production. */
-export function limitAuthAttempts(request: Request, action: "login" | "register"): void {
+export async function limitAuthAttempts(request: Request, action: "login" | "register", email?: string): Promise<void> {
   const ip = (request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
     || request.headers.get("x-real-ip") || "local").slice(0, 128);
-  const key = `${action}:${ip}`;
-  const now = Date.now();
-  for (const [entryKey, value] of attempts) {
-    if (value.resetAt <= now) attempts.delete(entryKey);
-  }
-  // Bound memory use; refuse new clients when full rather than losing active limits.
-  if (attempts.size >= 10_000 && !attempts.has(key)) {
-    throw new HttpError(429, "Muitas tentativas. Aguarde alguns minutos e tente novamente.");
-  }
-  const current = attempts.get(key) || { count: 0, resetAt: now + 15 * 60 * 1000 };
-  current.count += 1;
-  attempts.set(key, current);
-  if (current.count > (action === "login" ? 20 : 8)) {
-    throw new HttpError(429, "Muitas tentativas. Aguarde alguns minutos e tente novamente.");
+  const now = new Date();
+  const expires = new Date(now.getTime() + 15 * 60 * 1000).toISOString();
+  const db = getDb();
+  await db.prepare("DELETE FROM auth_attempts WHERE reset_at <= ?").run(now.toISOString());
+  const keys = [`${action}:ip:${hashSessionToken(ip)}`];
+  if (action === "login" && email) keys.push(`${action}:account:${hashSessionToken(email.toLowerCase())}`);
+  for (const key of keys) {
+    const attempt = await db.prepare(`
+      INSERT INTO auth_attempts (key,count,reset_at) VALUES (?,1,?)
+      ON CONFLICT(key) DO UPDATE SET
+        count = CASE WHEN auth_attempts.reset_at <= ? THEN 1 ELSE auth_attempts.count + 1 END,
+        reset_at = CASE WHEN auth_attempts.reset_at <= ? THEN excluded.reset_at ELSE auth_attempts.reset_at END
+      RETURNING count
+    `).get(key, expires, now.toISOString(), now.toISOString());
+    if (Number(attempt?.count) > (action === "login" ? 20 : 8)) {
+      throw new HttpError(429, "Muitas tentativas. Aguarde alguns minutos e tente novamente.");
+    }
   }
 }

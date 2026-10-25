@@ -1,11 +1,14 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "standalone",
+  output: process.env.VERCEL === "1" ? undefined : "standalone",
   // Preserve the repository's own agent instructions during environment startup.
   agentRules: false,
   poweredByHeader: false,
-  serverExternalPackages: ["sharp"],
+  serverExternalPackages: ["sharp", "subset-font"],
+  outputFileTracingIncludes: {
+    "/api/**": ["./lib/fonts/**/*", "./node_modules/harfbuzzjs/dist/*.wasm"],
+  },
   async headers() {
     return [{
       source: "/:path*",

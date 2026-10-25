@@ -45,14 +45,14 @@ export function withoutOwner(row: Row): Row {
   return result;
 }
 
-export function templateForUser(id: string, userId: string): Row {
-  const row = getDb().prepare("SELECT * FROM templates WHERE id = ? AND user_id = ?").get(id, userId);
+export async function templateForUser(id: string, userId: string): Promise<Row> {
+  const row = await getDb().prepare("SELECT * FROM templates WHERE id = ? AND user_id = ?").get(id, userId);
   if (!row) throw new HttpError(404, "Modelo não encontrado.");
   return row as Row;
 }
 
-export function documentForUser(id: string, userId: string): Row {
-  const row = getDb().prepare(`
+export async function documentForUser(id: string, userId: string): Promise<Row> {
+  const row = await getDb().prepare(`
     SELECT d.*, p.name AS patient_name FROM documents d
     LEFT JOIN patients p ON p.id = d.patient_id AND p.user_id = d.user_id
     WHERE d.id = ? AND d.user_id = ?
@@ -61,23 +61,23 @@ export function documentForUser(id: string, userId: string): Row {
   return row as Row;
 }
 
-export function checkDocumentReferences(
+export async function checkDocumentReferences(
   userId: string,
   patientId: string | null | undefined,
   templateId: string | null | undefined,
-): void {
-  if (patientId && !getDb().prepare("SELECT id FROM patients WHERE id = ? AND user_id = ?").get(patientId, userId)) {
+): Promise<void> {
+  if (patientId && !await getDb().prepare("SELECT id FROM patients WHERE id = ? AND user_id = ?").get(patientId, userId)) {
     throw new HttpError(404, "Paciente não encontrado.");
   }
-  if (templateId) templateForUser(templateId, userId);
+  if (templateId) await templateForUser(templateId, userId);
 }
 
 /** Resolve the supported placeholders when a reusable model becomes a document. */
-export function personalizeDocument(content: string, userId: string, patientId: string | null): string {
+export async function personalizeDocument(content: string, userId: string, patientId: string | null): Promise<string> {
   const db = getDb();
-  const profile = db.prepare("SELECT name, cro FROM profiles WHERE user_id = ?").get(userId);
+  const profile = await db.prepare("SELECT name, cro FROM profiles WHERE user_id = ?").get(userId);
   const patient = patientId
-    ? db.prepare("SELECT name FROM patients WHERE id = ? AND user_id = ?").get(patientId, userId)
+    ? await db.prepare("SELECT name FROM patients WHERE id = ? AND user_id = ?").get(patientId, userId)
     : undefined;
   const replacements: Record<string, string> = {
     paciente: String(patient?.name || ""),

@@ -5,7 +5,7 @@ O EndoDelivery trata informações clínicas potencialmente sensíveis. Esta pri
 ## Medidas implementadas
 
 - Contas individuais, senhas derivadas com scrypt e salt aleatório, sessões de sete dias com tokens aleatórios cujo hash é armazenado no banco.
-- Cookie de sessão `HttpOnly`, `SameSite=Lax` e `Secure` em produção; conferência de origem nas requisições que alteram dados e limite de tentativas de autenticação por processo/IP.
+- Cookie de sessão `HttpOnly`, `SameSite=Lax` e `Secure` em produção; conferência de origem nas requisições que alteram dados e limite persistente de tentativas de autenticação por IP e conta, compartilhado entre instâncias.
 - Verificação do proprietário em pacientes, fichas, agenda, modelos, documentos, radiografias e PDFs; vínculos de outras contas são rejeitados. Chaves estrangeiras compostas reforçam o isolamento no banco.
 - SQL parametrizado e limites/validação dos campos e corpos enviados.
 - Radiografias fora da pasta pública, com nomes aleatórios e acesso apenas por rota autenticada. Imagens são decodificadas, normalizadas e têm metadados EXIF removidos. O caminho e o nome original não são publicados.
@@ -13,13 +13,13 @@ O EndoDelivery trata informações clínicas potencialmente sensíveis. Esta pri
 - Erros públicos sem stack traces, consultas SQL, caminhos internos, senhas ou conteúdo clínico. Nenhuma credencial padrão é instalada.
 - Compartilhamento de PDF acionado pelo usuário com os recursos do dispositivo; o servidor não envia automaticamente documentos a serviços de mensagens.
 
-Dados e arquivos persistem em `DATABASE_PATH` e `FILE_STORAGE_PATH`. As pastas locais `data`, arquivos `.env` e relatórios temporários de testes não devem ser versionados. O diretório de uploads é privado para o processo do servidor e não pode ficar sob `public`. O banco e os arquivos não são cifrados em repouso pela aplicação: proteção de volumes, snapshots e backups depende da infraestrutura.
+Localmente, dados e arquivos persistem em `DATABASE_PATH` e `FILE_STORAGE_PATH`. Na Vercel, o aplicativo exige PostgreSQL gerenciado e Blob privado; credenciais ficam nas variáveis seguras da plataforma e nunca chegam ao cliente. As pastas locais `data`, arquivos `.env` e relatórios temporários de testes não devem ser versionados. Uploads não podem ficar sob `public`. A aplicação não implementa cifragem própria em repouso: proteção de serviços, volumes, snapshots e backups depende da infraestrutura e dos contratos com os provedores.
 
 ## O que ainda não existe
 
 Nesta etapa, não há verificação de e-mail, recuperação automática de senha, MFA, administração de equipes/papéis, trilha completa de auditoria clínica, assinatura digital de documentos, política automatizada de retenção, backup automatizado ou recuperação de desastre validada. O cadastro é autônomo; não comprova identidade ou inscrição profissional. Sessões diferentes do mesmo usuário não têm ainda uma tela de revogação centralizada.
 
-O limite de autenticação reside na memória de cada processo, não é um mecanismo distribuído. A política CSP inicial inclui permissões necessárias à execução atual do Next.js e deve ser refinada em uma revisão de implantação. O aplicativo não controla o armazenamento posterior de PDFs baixados, a galeria do dispositivo, capturas de tela, extensões do navegador ou os destinos escolhidos no compartilhamento.
+O limite de autenticação persiste no banco e usa identificadores derivados por hash, com limpeza de janelas expiradas. O proxy precisa sobrescrever cabeçalhos de IP para evitar falsificação desses identificadores. A política CSP inicial deve ser refinada em uma revisão de implantação. O aplicativo não controla o armazenamento posterior de PDFs baixados, a galeria do dispositivo, capturas de tela, extensões do navegador ou os destinos escolhidos no compartilhamento.
 
 O objetivo do produto é registrar informações inseridas pelo profissional. Não há diagnóstico, sugestão automática de conduta ou prescrição medicamentosa. Modelos de receituário e orientações precisam de revisão e preenchimento individual pelo profissional responsável.
 

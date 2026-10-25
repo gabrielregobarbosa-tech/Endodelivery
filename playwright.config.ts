@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const testData = mkdtempSync(join(tmpdir(), "endodelivery-e2e-"));
+// A production binding must never be inherited by the test server.
+const testDatabaseUrl = process.env.TEST_DATABASE_URL || "";
 const cloudBrowser = process.env.CLOUD_BROWSER_TESTS === "1";
 // This application does not use WebGL; software GPU rendering stalls in this cloud runner.
 if (cloudBrowser) chromium.setGraphicsMode = false;
@@ -40,6 +42,12 @@ export default defineConfig({
     timeout: 60_000,
     env: {
       NEXT_TELEMETRY_DISABLED: "1",
+      DATABASE_PROVIDER: testDatabaseUrl ? "postgres" : "sqlite",
+      DATABASE_URL: testDatabaseUrl,
+      POSTGRES_URL: "",
+      VERCEL: "",
+      STORAGE_PROVIDER: "local",
+      BLOB_READ_WRITE_TOKEN: "",
       DATABASE_PATH: join(testData, "clinic.sqlite"),
       FILE_STORAGE_PATH: join(testData, "uploads"),
       APP_ORIGIN: "http://localhost:3100",

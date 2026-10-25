@@ -59,14 +59,16 @@ export const appointmentSchema = z.object({
   status: z.enum(["scheduled", "in_progress", "completed", "cancelled"]).default("scheduled"),
 });
 
-export function ownPatient(id: string, userId: string): Row {
-  const patient = getDb().prepare("SELECT * FROM patients WHERE id = ? AND user_id = ?").get(id, userId) as Row | undefined;
+export async function ownPatient(id: string, userId: string, db = getDb(), lock = false): Promise<Row> {
+  const locking = lock && db.provider === "postgres" ? " FOR UPDATE" : "";
+  const patient = await db.prepare(`SELECT * FROM patients WHERE id = ? AND user_id = ?${locking}`).get(id, userId) as Row | undefined;
   if (!patient) throw new HttpError(404, "Paciente não encontrado.");
   return patient;
 }
 
-export function ownVisit(id: string, userId: string): Row {
-  const visit = getDb().prepare("SELECT * FROM visits WHERE id = ? AND user_id = ?").get(id, userId) as Row | undefined;
+export async function ownVisit(id: string, userId: string, db = getDb(), lock = false): Promise<Row> {
+  const locking = lock && db.provider === "postgres" ? " FOR UPDATE" : "";
+  const visit = await db.prepare(`SELECT * FROM visits WHERE id = ? AND user_id = ?${locking}`).get(id, userId) as Row | undefined;
   if (!visit) throw new HttpError(404, "Atendimento não encontrado.");
   return visit;
 }
@@ -75,8 +77,8 @@ export function visitDto(visit: Row): Row {
   return { ...visit, canals: JSON.parse(String(visit.canals || "[]")) };
 }
 
-export function appointmentDto(id: string, userId: string): Row {
-  const appointment = getDb().prepare("SELECT a.*, p.name AS patient_name FROM appointments a LEFT JOIN patients p ON p.id = a.patient_id AND p.user_id = a.user_id WHERE a.id = ? AND a.user_id = ?").get(id, userId) as Row | undefined;
+export async function appointmentDto(id: string, userId: string): Promise<Row> {
+  const appointment = await getDb().prepare("SELECT a.*, p.name AS patient_name FROM appointments a LEFT JOIN patients p ON p.id = a.patient_id AND p.user_id = a.user_id WHERE a.id = ? AND a.user_id = ?").get(id, userId) as Row | undefined;
   if (!appointment) throw new HttpError(404, "Compromisso não encontrado.");
   return appointment;
 }

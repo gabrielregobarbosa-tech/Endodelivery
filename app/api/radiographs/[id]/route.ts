@@ -9,7 +9,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   try {
     const user = await requireUser();
     const { id } = await context.params;
-    const row = getDb().prepare("SELECT filename FROM radiographs WHERE id = ? AND user_id = ?").get(id, user.id);
+    const row = await getDb().prepare("SELECT filename FROM radiographs WHERE id = ? AND user_id = ?").get(id, user.id);
     if (!row) throw new HttpError(404, "Radiografia não encontrada.");
     let image: Buffer;
     try { image = await readImage(String(row.filename)); }
@@ -30,10 +30,13 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
     const user = await requireUser();
     const { id } = await context.params;
     const db = getDb();
-    const row = db.prepare("SELECT filename FROM radiographs WHERE id = ? AND user_id = ?").get(id, user.id);
-    if (!row) throw new HttpError(404, "Radiografia não encontrada.");
-    await removeImage(String(row.filename));
-    db.prepare("DELETE FROM radiographs WHERE id = ? AND user_id = ?").run(id, user.id);
+    await db.transaction(async (tx) => {
+      const locking = tx.provider === "postgres" ? " FOR UPDATE" : "";
+      const row = await tx.prepare(`SELECT filename FROM radiographs WHERE id = ? AND user_id = ?${locking}`).get(id, user.id);
+      if (!row) throw new HttpError(404, "Radiografia não encontrada.");
+      await removeImage(String(row.filename));
+      await tx.prepare("DELETE FROM radiographs WHERE id = ? AND user_id = ?").run(id, user.id);
+    });
     return Response.json({ ok: true });
   } catch (error) { return routeError(error); }
 }

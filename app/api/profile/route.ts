@@ -3,6 +3,7 @@ import sharp from "sharp";
 import { requireUser } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { assertSameOrigin, HttpError, readJson, routeError } from "@/lib/http";
+import { professionalNameSchema } from "@/lib/validation";
 import { validated, withoutOwner, type Row } from "../templates/_shared";
 
 export const runtime = "nodejs";
@@ -18,7 +19,7 @@ function validLogo(value: string): boolean {
 }
 
 const profileSchema = z.object({
-  name: z.string().trim().min(1, "Informe seu nome profissional.").max(160),
+  name: professionalNameSchema,
   specialty: z.string().trim().max(160).optional().default(""),
   cro: z.string().trim().max(60).optional().default(""),
   phone: z.string().trim().max(40).optional().default(""),
@@ -30,7 +31,7 @@ const profileSchema = z.object({
 export async function GET() {
   try {
     const user = await requireUser();
-    const profile = getDb().prepare("SELECT * FROM profiles WHERE user_id = ?").get(user.id);
+    const profile = await getDb().prepare("SELECT * FROM profiles WHERE user_id = ?").get(user.id);
     if (!profile) throw new HttpError(404, "Perfil profissional não encontrado.");
     return Response.json({ profile: withoutOwner(profile as Row) });
   } catch (error) { return routeError(error); }
@@ -56,14 +57,18 @@ export async function PUT(request: Request) {
         throw new HttpError(400, "Não foi possível ler o logotipo. Escolha uma imagem PNG ou JPEG de até 1 MB.");
       }
     }
-    getDb().prepare(`
-      INSERT INTO profiles (user_id, name, specialty, cro, phone, email, address, logo_data_url)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(user_id) DO UPDATE SET name = excluded.name, specialty = excluded.specialty,
-        cro = excluded.cro, phone = excluded.phone, email = excluded.email,
-        address = excluded.address, logo_data_url = excluded.logo_data_url
-    `).run(user.id, data.name, data.specialty, data.cro, data.phone, data.email, data.address, data.logo_data_url);
-    const profile = getDb().prepare("SELECT * FROM profiles WHERE user_id = ?").get(user.id);
+    await getDb().transaction(async (tx) => {
+      await tx.prepare(`
+        INSERT INTO profiles (user_id, name, specialty, cro, phone, email, address, logo_data_url)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET name = excluded.name, specialty = excluded.specialty,
+          cro = excluded.cro, phone = excluded.phone, email = excluded.email,
+          address = excluded.address, logo_data_url = excluded.logo_data_url
+      `).run(user.id, data.name, data.specialty, data.cro, data.phone, data.email, data.address, data.logo_data_url);
+      // The same professional spelling appears in the session identity and PDF header.
+      await tx.prepare("UPDATE users SET name = ? WHERE id = ?").run(data.name, user.id);
+    });
+    const profile = await getDb().prepare("SELECT * FROM profiles WHERE user_id = ?").get(user.id);
     return Response.json({ profile: withoutOwner(profile as Row) });
   } catch (error) { return routeError(error); }
 }

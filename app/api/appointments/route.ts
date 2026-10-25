@@ -13,7 +13,7 @@ export async function GET(request: Request) {
     const date = new URL(request.url).searchParams.get("date");
     if (date) parseBody(isoDate, date);
     const query = `SELECT a.*, p.name AS patient_name FROM appointments a LEFT JOIN patients p ON p.id = a.patient_id AND p.user_id = a.user_id WHERE a.user_id = ? ${date ? "AND a.date = ?" : ""} ORDER BY a.date ASC, a.time ASC, a.created_at ASC`;
-    const appointments = date ? getDb().prepare(query).all(user.id, date) : getDb().prepare(query).all(user.id);
+    const appointments = date ? await getDb().prepare(query).all(user.id, date) : await getDb().prepare(query).all(user.id);
     return Response.json({ appointments }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) { return routeError(error); }
 }
@@ -23,10 +23,10 @@ export async function POST(request: Request) {
     assertSameOrigin(request);
     const user = await requireUser();
     const value = parseBody(appointmentSchema, await readJson(request));
-    if (value.patient_id) ownPatient(value.patient_id, user.id);
+    if (value.patient_id) await ownPatient(value.patient_id, user.id);
     const id = randomUUID();
-    getDb().prepare("INSERT INTO appointments (id, user_id, patient_id, date, time, clinic, procedure, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    await getDb().prepare("INSERT INTO appointments (id, user_id, patient_id, date, time, clinic, procedure, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
       .run(id, user.id, value.patient_id, value.date, value.time, value.clinic, value.procedure, value.status, new Date().toISOString());
-    return Response.json({ appointment: appointmentDto(id, user.id) }, { status: 201 });
+    return Response.json({ appointment: await appointmentDto(id, user.id) }, { status: 201 });
   } catch (error) { return routeError(error); }
 }

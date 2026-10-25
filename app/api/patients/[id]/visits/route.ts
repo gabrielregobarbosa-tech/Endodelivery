@@ -10,11 +10,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     assertSameOrigin(request);
     const user = await requireUser();
     const { id: patientId } = await context.params;
-    ownPatient(patientId, user.id);
+    await ownPatient(patientId, user.id);
     const value = parseBody(visitSchema, await readJson(request));
     const id = randomUUID();
-    getDb().prepare("INSERT INTO visits (id, user_id, patient_id, attended_at, tooth, treatment, cement, irrigant, notes, canals, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    await getDb().prepare("INSERT INTO visits (id, user_id, patient_id, attended_at, tooth, treatment, cement, irrigant, notes, canals, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
       .run(id, user.id, patientId, value.attended_at, value.tooth, value.treatment, value.cement, value.irrigant, value.notes, JSON.stringify(value.canals), new Date().toISOString());
-    return Response.json({ visit: visitDto(ownVisit(id, user.id)) }, { status: 201 });
+    return Response.json({ visit: visitDto(await ownVisit(id, user.id)) }, { status: 201 });
   } catch (error) { return routeError(error); }
 }

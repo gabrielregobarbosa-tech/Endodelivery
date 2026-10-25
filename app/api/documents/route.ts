@@ -12,8 +12,8 @@ export async function GET(request: Request) {
   try {
     const user = await requireUser();
     const patientId = new URL(request.url).searchParams.get("patient_id");
-    if (patientId) checkDocumentReferences(user.id, patientId, null);
-    const documents = getDb().prepare(`
+    if (patientId) await checkDocumentReferences(user.id, patientId, null);
+    const documents = await getDb().prepare(`
       SELECT d.*, p.name AS patient_name FROM documents d
       LEFT JOIN patients p ON p.id = d.patient_id AND p.user_id = d.user_id
       WHERE d.user_id = ? ${patientId ? "AND d.patient_id = ?" : ""}
@@ -28,14 +28,14 @@ export async function POST(request: Request) {
     assertSameOrigin(request);
     const user = await requireUser();
     const data = validated(documentSchema, await readJson(request));
-    checkDocumentReferences(user.id, data.patient_id, data.template_id);
-    const content = personalizeDocument(data.content, user.id, data.patient_id);
+    await checkDocumentReferences(user.id, data.patient_id, data.template_id);
+    const content = await personalizeDocument(data.content, user.id, data.patient_id);
     if (content.length > 30000) throw new HttpError(400, "O documento preenchido excede o limite de 30.000 caracteres.");
     const id = randomUUID();
-    getDb().prepare(`
+    await getDb().prepare(`
       INSERT INTO documents (id, user_id, patient_id, template_id, title, content, kind, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(id, user.id, data.patient_id, data.template_id, data.title, content, data.kind, new Date().toISOString());
-    return Response.json({ document: withoutOwner(documentForUser(id, user.id)) }, { status: 201 });
+    return Response.json({ document: withoutOwner(await documentForUser(id, user.id)) }, { status: 201 });
   } catch (error) { return routeError(error); }
 }

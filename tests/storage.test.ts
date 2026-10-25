@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import sharp from "sharp";
 import { imagePath, MAX_IMAGE_BYTES, readImage, readImageForm, removeImage, storageDirectory, writeRadiograph } from "@/lib/storage";
+import { ServiceError } from "@/lib/service-errors";
 
 test("radiografia é normalizada para JPEG privado e removida de forma idempotente", async () => {
   const directory = await mkdtemp(join(tmpdir(), "endodelivery-storage-test-"));
@@ -37,7 +38,7 @@ test("armazenamento rejeita arquivos inválidos, SVG, tamanhos excessivos e trav
   assert.throws(() => imagePath("../../patient-data"), /inválido/);
   const previous = process.env.FILE_STORAGE_PATH;
   process.env.FILE_STORAGE_PATH = "public/private-radiographs";
-  try { assert.throws(storageDirectory, /fora da pasta pública/); }
+  try { assert.throws(storageDirectory, (error) => error instanceof ServiceError && error.code === "STORAGE_PATH_PUBLIC"); }
   finally { if (previous === undefined) delete process.env.FILE_STORAGE_PATH; else process.env.FILE_STORAGE_PATH = previous; }
 });
 

@@ -1,4 +1,7 @@
 import { ZodError } from "zod";
+import { randomUUID } from "node:crypto";
+import { ServiceError } from "@/lib/service-errors";
+import { databaseErrorCode } from "@/lib/database/errors";
 
 export class HttpError extends Error {
   constructor(public status: number, message: string) {
@@ -12,11 +15,27 @@ export function routeError(error: unknown): Response {
     return Response.json({ error: error.message }, { status: error.status, headers: { "Cache-Control": "no-store" } });
   }
   if (error instanceof ZodError) {
-    return Response.json({ error: "Confira os campos informados e tente novamente." }, { status: 400, headers: { "Cache-Control": "no-store" } });
+    return Response.json({ error: "Confira os campos informados e tente novamente.", code: "VALIDATION_ERROR" }, { status: 400, headers: { "Cache-Control": "no-store" } });
   }
-  // Keep SQL statements, paths, passwords and clinical content out of responses/logs.
-  console.error("Request failed", error instanceof Error ? error.name : "UnknownError");
-  return Response.json({ error: "Não foi possível concluir a operação. Tente novamente." }, { status: 500, headers: { "Cache-Control": "no-store" } });
+  const reference = randomUUID();
+  if (error instanceof ServiceError) {
+    // Stable identifiers let operations find failures without logging URLs, SQL or credentials.
+    const causeCode = databaseErrorCode(error);
+    const safeCode = typeof causeCode === "number" || (typeof causeCode === "string" && /^[A-Z0-9_]{2,64}$/.test(causeCode)) ? causeCode : undefined;
+    console.error("endodelivery.service_unavailable", { reference, service: error.kind, code: error.code, cause_code: safeCode });
+    const messages = {
+      configuration: "O serviço ainda não está configurado. Entre em contato com o responsável pelo aplicativo.",
+      database: "O serviço de dados está indisponível. Aguarde um momento e tente novamente.",
+      storage: "O armazenamento de imagens está indisponível. Tente novamente em alguns instantes.",
+    };
+    return Response.json({ error: messages[error.kind], code: `SERVICE_${error.kind.toUpperCase()}`, reference }, {
+      status: 503, headers: { "Cache-Control": "no-store", "Retry-After": "30" },
+    });
+  }
+  console.error("endodelivery.request_failed", { reference, type: error instanceof Error ? error.name : "UnknownError" });
+  return Response.json({ error: "Não foi possível concluir a operação. Tente novamente.", code: "INTERNAL_ERROR", reference }, {
+    status: 500, headers: { "Cache-Control": "no-store" },
+  });
 }
 
 export async function readJson(request: Request): Promise<unknown> {

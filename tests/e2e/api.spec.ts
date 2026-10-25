@@ -22,7 +22,8 @@ async function newContext(): Promise<APIRequestContext> {
 }
 
 async function expectStatus(response: APIResponse, expected: number): Promise<void> {
-  expect(response.status(), `${response.url()} returned: ${await response.text()}`).toBe(expected);
+  // Never write response bodies, credentials or session tokens into failure messages.
+  expect(response.status(), `${new URL(response.url()).pathname} returned HTTP ${response.status()}`).toBe(expected);
 }
 
 async function createAccount(name: string): Promise<Account> {
@@ -32,7 +33,7 @@ async function createAccount(name: string): Promise<Account> {
   await expectStatus(response, 201);
   const { user } = await response.json();
   expect(user).toMatchObject({ name, email });
-  expect(user.password_hash).toBeUndefined();
+  expect(Object.hasOwn(user, "password_hash")).toBe(false);
   return { context, email, id: user.id, name };
 }
 
@@ -69,7 +70,9 @@ test("authentication validates credentials, protects sessions and rejects cross-
   try {
     const health = await anonymous.get("/api/health");
     await expectStatus(health, 200);
-    expect(await health.json()).toEqual({ status: "ok", database: "ready" });
+    const healthBody = await health.json();
+    expect(healthBody).toEqual(expect.objectContaining({ status: "ok", database: "ready" }));
+    expect(healthBody.max_upload_bytes).toBe(10 * 1024 * 1024);
     await expectStatus(await anonymous.get("/api/patients"), 401);
     await expectStatus(await anonymous.get("/api/profile"), 401);
     await expectStatus(await anonymous.get("/api/auth/me"), 401);
@@ -85,7 +88,7 @@ test("authentication validates credentials, protects sessions and rejects cross-
     expect(cookie).toBeDefined();
     expect(cookie?.httpOnly).toBe(true);
     expect(cookie?.sameSite).toBe("Lax");
-    expect(cookie?.value).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(/^[A-Za-z0-9_-]{43}$/.test(cookie?.value || "")).toBe(true);
     const me = await account.context.get("/api/auth/me");
     await expectStatus(me, 200);
     expect((await me.json()).user).toEqual({ id: account.id, name: account.name, email: account.email });
@@ -306,5 +309,140 @@ test("accounts cannot read, change or associate another professional's clinical 
   } finally {
     await owner.context.dispose();
     await outsider.context.dispose();
+  }
+});
+
+// These are the requested spelling fixtures, not real professional accounts.
+// All accounts are created only in the isolated test database with fictitious emails.
+const professionalNameFixtures = [
+  "Gabriel Barbosa",
+  "Dr. Gabriel Barbosa",
+  "Dr. Gabriel R. Barbosa",
+  "Drª. Ana Maria",
+  "João D'Ávila",
+  "Drª. Mari\u0301a D’A\u0301vila",
+  "Dr. 李 明",
+];
+
+for (const name of professionalNameFixtures) {
+  test(`fictitious professional preserves exact spelling through registration, profile, login and PDF: ${name}`, async () => {
+    const account = await createAccount(name);
+    const context = account.context;
+    let resumed: APIRequestContext | undefined;
+    try {
+      const profile = await context.get("/api/profile");
+      await expectStatus(profile, 200);
+      expect((await profile.json()).profile.name).toBe(name);
+      expect((await (await context.get("/api/auth/me")).json()).user.name).toBe(name);
+
+      const updatedName = `${name} - Profissional fictício`;
+      const updated = await context.put("/api/profile", { data: { name: updatedName } });
+      await expectStatus(updated, 200);
+      expect((await updated.json()).profile.name).toBe(updatedName);
+      const updatedMe = await context.get("/api/auth/me");
+      await expectStatus(updatedMe, 200);
+      expect((await updatedMe.json()).user.name).toBe(updatedName);
+
+      const restored = await context.put("/api/profile", { data: { name } });
+      await expectStatus(restored, 200);
+      const restoredName = (await restored.json()).profile.name;
+      expect(restoredName).toBe(name);
+      if (name.normalize("NFC") !== name) expect(restoredName).not.toBe(name.normalize("NFC"));
+
+      const documentResponse = await context.post("/api/documents", {
+        data: {
+          title: "Documento fictício de grafia profissional",
+          kind: "post_op",
+          content: "Profissional: {{profissional}}\n\nDocumento fictício para validar preservação de grafia. Sem finalidade clínica.",
+        },
+      });
+      await expectStatus(documentResponse, 201);
+      const document = (await documentResponse.json()).document;
+      expect(document.content).toBe(`Profissional: ${name}\n\nDocumento fictício para validar preservação de grafia. Sem finalidade clínica.`);
+      await verifyPdf(await context.get(`/api/documents/${document.id}/pdf`));
+
+      await expectStatus(await context.post("/api/auth/logout"), 200);
+      await expectStatus(await context.get("/api/auth/me"), 401);
+      resumed = await newContext();
+      const login = await resumed.post("/api/auth/login", { data: { email: account.email.toUpperCase(), password } });
+      await expectStatus(login, 200);
+      expect((await login.json()).user).toEqual({ id: account.id, email: account.email, name });
+      const persistedProfile = await resumed.get("/api/profile");
+      await expectStatus(persistedProfile, 200);
+      expect((await persistedProfile.json()).profile.name).toBe(name);
+      const persistedDocument = await resumed.get(`/api/documents/${document.id}`);
+      await expectStatus(persistedDocument, 200);
+      expect((await persistedDocument.json()).document.content).toBe(document.content);
+      await verifyPdf(await resumed.get(`/api/documents/${document.id}/pdf`));
+      await expectStatus(await resumed.post("/api/auth/logout"), 200);
+      await expectStatus(await resumed.get("/api/auth/me"), 401);
+    } finally {
+      await resumed?.dispose();
+      await context.dispose();
+    }
+  });
+}
+
+test("concurrent fictitious registrations for one email create one usable account", async () => {
+  const first = await newContext();
+  const second = await newContext();
+  const resumed = await newContext();
+  const email = `race-${randomUUID()}@endodelivery.example`;
+  const name = "Profissional fictício de cadastro concorrente";
+  try {
+    const responses = await Promise.all([
+      first.post("/api/auth/register", { data: { name, email, password } }),
+      second.post("/api/auth/register", { data: { name, email, password } }),
+    ]);
+    expect(responses.map((response) => response.status()).sort((left, right) => left - right)).toEqual([201, 400]);
+    const winningResponse = responses.find((response) => response.status() === 201)!;
+    const winningUser = (await winningResponse.json()).user;
+    expect(winningUser).toMatchObject({ name, email });
+    const losingContext = responses[0].status() === 400 ? first : second;
+    await expectStatus(await losingContext.get("/api/auth/me"), 401);
+    await expectStatus(await losingContext.post("/api/auth/register", { data: { name, email: email.toUpperCase(), password } }), 400);
+    const login = await resumed.post("/api/auth/login", { data: { email, password } });
+    await expectStatus(login, 200);
+    expect((await login.json()).user).toEqual(winningUser);
+    const profile = await resumed.get("/api/profile");
+    await expectStatus(profile, 200);
+    expect((await profile.json()).profile.name).toBe(name);
+    const templates = await resumed.get("/api/templates");
+    await expectStatus(templates, 200);
+    expect((await templates.json()).templates).toHaveLength(2);
+  } finally {
+    await Promise.all([first.dispose(), second.dispose(), resumed.dispose()]);
+  }
+});
+
+test("persistent account rate limits reject login abuse with safe 401 and 429 responses", async () => {
+  const account = await createAccount("Profissional fictício de limite de tentativas");
+  const firstClient = await newContext();
+  const secondClient = await newContext();
+  const thirdClient = await newContext();
+  const wrongPassword = "Senha-ficticia-incorreta-456!";
+  try {
+    for (const client of [firstClient, secondClient]) {
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        const response = await client.post("/api/auth/login", { data: { email: account.email, password: wrongPassword } });
+        await expectStatus(response, 401);
+        const body = await response.json();
+        expect(Object.keys(body).every((key) => ["error", "code", "reference"].includes(key))).toBe(true);
+        expect(body.error).toBe("E-mail ou senha inválidos.");
+      }
+    }
+    // A third IP/context is still limited for the same persisted account key.
+    const limited = await thirdClient.post("/api/auth/login", { data: { email: account.email, password } });
+    await expectStatus(limited, 429);
+    expect(limited.headers()["cache-control"]).toContain("no-store");
+    const limitedBody = await limited.json();
+    expect(Object.keys(limitedBody).every((key) => ["error", "code", "reference"].includes(key))).toBe(true);
+    expect(limitedBody.error).toBe("Muitas tentativas. Aguarde alguns minutos e tente novamente.");
+    const serialized = JSON.stringify(limitedBody);
+    expect(serialized.includes(password) || serialized.includes(wrongPassword) || serialized.includes(account.email)).toBe(false);
+    expect(/password_hash|postgres(?:ql)?:|sqlite|SELECT|INSERT|UPDATE|token_hash/i.test(serialized)).toBe(false);
+    await expectStatus(await thirdClient.get("/api/auth/me"), 401);
+  } finally {
+    await Promise.all([account.context.dispose(), firstClient.dispose(), secondClient.dispose(), thirdClient.dispose()]);
   }
 });

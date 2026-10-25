@@ -1,6 +1,6 @@
 # API do EndoDelivery — primeira etapa
 
-A aplicação web e as rotas REST fazem parte do mesmo servidor Next.js, sob `/api`. O servidor requer Node.js 24 e mantém o banco SQLite em `DATABASE_PATH`, com migrações idempotentes. Os nomes dos campos são `snake_case`; identificadores são UUIDs e datas civis usam `AAAA-MM-DD`. Horários da agenda usam `HH:mm`, sem conversão automática de fuso horário.
+A aplicação web e as rotas REST fazem parte do mesmo servidor Next.js, sob `/api`. O servidor requer Node.js 24 e usa PostgreSQL gerenciado na Vercel ou SQLite local em `DATABASE_PATH`, com migrações idempotentes. Os nomes dos campos são `snake_case`; identificadores são UUIDs e datas civis usam `AAAA-MM-DD`. Horários da agenda usam `HH:mm`, sem conversão automática de fuso horário.
 
 Esta API pode ser consumida por um futuro cliente SwiftUI. Não há aplicativo nativo, autenticação OAuth nem contrato de compatibilidade versionado nesta etapa.
 
@@ -14,14 +14,14 @@ Os endpoints clínicos exigem sessão. Consultas e alterações verificam o prop
 
 Requisições que alteram estado rejeitam `Sec-Fetch-Site: cross-site` e, quando enviado, verificam o cabeçalho `Origin`. Defina `APP_ORIGIN=https://seu-dominio.example` em produção; localmente, a origem da própria requisição é usada. Clientes nativos podem enviar cookies sem `Origin`. Não há configuração de CORS para chamadas de outros sites.
 
-Login admite até 20 tentativas e cadastro até oito por janela de 15 minutos e IP, em memória do processo. Reiniciar ou distribuir o servidor reinicia ou separa esses contadores. Um proxy de produção deve sobrescrever cabeçalhos de IP encaminhados, sobretudo `X-Forwarded-For` e `X-Real-IP`; clientes não devem poder escolhê-los. Para múltiplas instâncias, implemente limites compartilhados na infraestrutura.
+Login admite até 20 tentativas e cadastro até oito por janela de 15 minutos e IP. No login, há também limite persistente de 20 tentativas por e-mail. Os contadores atômicos ficam no banco e são compartilhados entre instâncias, com identificadores derivados por hash. Um proxy de produção deve sobrescrever cabeçalhos de IP encaminhados, sobretudo `X-Forwarded-For` e `X-Real-IP`; clientes não devem poder escolhê-los.
 
 ## Formato e limites
 
 - Requisições JSON precisam de `Content-Type: application/json` e objeto na raiz. Limite total: 2 MiB, verificado durante a leitura.
-- Respostas de erro seguem `{ "error": "Mensagem em português." }`, sem stack trace ou detalhes de SQL.
+- Respostas de erro têm `error` em português, sem stack trace ou detalhes de SQL. Falhas operacionais também incluem `code` e `reference` para correlação com logs seguros.
 - Respostas clínicas, radiografias e PDFs usam `Cache-Control: private, no-store`. Não devem ser armazenadas por CDN, proxy ou service worker.
-- `400`: dados inválidos; `401`: sessão ausente/expirada; `403`: origem rejeitada; `404`: recurso indisponível; `413`: tamanho excedido; `415`: JSON enviado com tipo de conteúdo incorreto; `429`: limite de autenticação; `500`: falha interna genérica.
+- `400`: dados inválidos; `401`: sessão ausente/expirada; `403`: origem rejeitada; `404`: recurso indisponível; `413`: tamanho excedido; `415`: JSON enviado com tipo de conteúdo incorreto; `422`: glifo de identidade ainda não suportado pelo PDF; `429`: limite de autenticação; `503`: configuração ou serviço indisponível; `500`: falha interna genérica.
 - Criações retornam `201`. Exclusão de modelo ou documento retorna `204`, sem corpo; exclusão de paciente/atendimento/compromisso/radiografia retorna JSON.
 
 Os exemplos abaixo são fictícios e não correspondem a contas ou pacientes instalados.
@@ -34,7 +34,7 @@ Os exemplos abaixo são fictícios e não correspondem a contas ou pacientes ins
 | `POST /api/auth/login` | `{ "email", "password" }` → `{ "user" }` e cookie |
 | `POST /api/auth/logout` | Invalida a sessão atual → `{ "ok": true }` |
 | `GET /api/auth/me` | `{ "user" }` da sessão atual |
-| `GET /api/health` | Sem autenticação. Consulta o banco e a versão de migração → `{ "status": "ok", "database": "ready" }`; indisponível retorna `503` |
+| `GET /api/health` | Sem autenticação. Consulta o banco e as migrações → `{ "status": "ok", "database": "ready", "max_upload_bytes": 10485760 }` localmente; o limite é 4194304 na Vercel. Indisponível retorna `503`; não comprova acesso ao Blob. |
 
 Exemplo de cadastro de uma conta de desenvolvimento:
 
@@ -96,9 +96,9 @@ Ficha clínica: `attended_at`, `tooth` e `treatment` são obrigatórios. `canals
 | `GET /api/radiographs/:id` | Imagem JPEG autenticada do proprietário |
 | `DELETE /api/radiographs/:id` | Remove a imagem e seu registro |
 
-Cada arquivo pode ter até 10 MiB e 20 megapixels. O parser admite até 128 KiB adicionais para o envelope multipart. JPEG, PNG e WebP estáticos são decodificados e normalizados para JPEG; o tipo real é validado pelo decodificador. EXIF, localização e nome original não são preservados. Não há suporte a DICOM, HEIC ou animação.
+Cada arquivo pode ter até 10 MiB localmente ou 4 MiB na Vercel, e até 20 megapixels. O parser admite até 128 KiB adicionais para o envelope multipart. JPEG, PNG e WebP estáticos são decodificados e normalizados para JPEG; o tipo real é validado pelo decodificador. EXIF, localização e nome original não são preservados. Não há suporte a DICOM, HEIC ou animação.
 
-Os arquivos recebem nomes aleatórios e ficam em `FILE_STORAGE_PATH`, fora de `public`; metadados retornados ao cliente não incluem caminhos internos. `visit_id`, quando informado, precisa pertencer ao mesmo paciente e usuário. Legendas admitem até 500 caracteres.
+Os arquivos recebem nomes aleatórios e ficam no Blob Store privado na Vercel ou em `FILE_STORAGE_PATH` localmente, fora de `public`; metadados retornados ao cliente não incluem caminhos internos, URLs de objetos ou tokens. `visit_id`, quando informado, precisa pertencer ao mesmo paciente e usuário. Legendas admitem até 500 caracteres.
 
 ## Agenda
 
@@ -131,7 +131,7 @@ O vínculo `patient_id` é opcional (`null` ou string vazia também são aceitos
 
 ## Perfil profissional
 
-`GET /api/profile` retorna `{ "profile" }`. `PUT /api/profile` salva o perfil completo e retorna a mesma estrutura. O nome profissional é obrigatório; enviar os demais campos vazios remove seu conteúdo.
+`GET /api/profile` retorna `{ "profile" }`. `PUT /api/profile` salva o perfil completo e retorna a mesma estrutura. O nome profissional é obrigatório, com 2 a 120 caracteres, e preserva pontuação e Unicode, assim como o cadastro; enviar os demais campos vazios remove seu conteúdo.
 
 ```json
 {

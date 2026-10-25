@@ -1,17 +1,33 @@
+async function fetchApp(url: string, options: RequestInit): Promise<Response> {
+  try { return await fetch(url, options); }
+  catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw error;
+    throw new Error('Não foi possível conectar ao aplicativo. Verifique sua conexão e tente novamente.');
+  }
+}
+
+function responseMessage(status: number, message?: string): string {
+  if (message) return message;
+  if (status === 413) return 'O arquivo excede o limite do servidor. Escolha um arquivo menor.';
+  if (status === 429) return 'Muitas tentativas. Aguarde alguns minutos e tente novamente.';
+  if (status === 503 || status === 502 || status === 504) return 'O serviço está temporariamente indisponível. Tente novamente em alguns instantes.';
+  return 'Não foi possível concluir a solicitação. Tente novamente.';
+}
+
 export async function api<T>(url: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
   if (typeof options.body === 'string' && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
-  const response = await fetch(url, { ...options, headers, cache: 'no-store', credentials: 'same-origin' });
+  const response = await fetchApp(url, { ...options, headers, cache: 'no-store', credentials: 'same-origin' });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || 'Não foi possível concluir a solicitação. Tente novamente.');
+  if (!response.ok) throw new Error(responseMessage(response.status, data.error));
   return data as T;
 }
 
 export async function sharePdf(url: string, filename: string): Promise<void> {
-  const response = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
+  const response = await fetchApp(url, { credentials: 'same-origin', cache: 'no-store' });
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error || 'Não foi possível gerar o PDF.');
+    throw new Error(responseMessage(response.status, data.error));
   }
   const blob = await response.blob();
   const file = new File([blob], filename, { type: 'application/pdf' });

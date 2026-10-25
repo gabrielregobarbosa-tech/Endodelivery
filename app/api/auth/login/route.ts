@@ -4,6 +4,7 @@ import { getDb } from "@/lib/db";
 import { assertSameOrigin, HttpError, readJson, routeError } from "@/lib/http";
 
 export const runtime = "nodejs";
+export const maxDuration = 30;
 
 const loginSchema = z.object({
   email: z.string().trim().toLowerCase().email().max(254),
@@ -13,9 +14,9 @@ const loginSchema = z.object({
 export async function POST(request: Request): Promise<Response> {
   try {
     assertSameOrigin(request);
-    limitAuthAttempts(request, "login");
     const input = loginSchema.parse(await readJson(request));
-    const account = getDb().prepare("SELECT id,name,email,password_hash FROM users WHERE email = ?").get(input.email);
+    await limitAuthAttempts(request, "login", input.email);
+    const account = await getDb().prepare("SELECT id,name,email,password_hash FROM users WHERE LOWER(email) = ?").get(input.email);
     let valid = false;
     if (account) valid = await verifyPassword(input.password, String(account.password_hash));
     else await hashPassword(input.password); // Keep nonexistent-account responses equally costly.

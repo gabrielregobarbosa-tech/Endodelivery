@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { Check, ImagePlus, LogOut, Monitor, Moon, ShieldCheck, Sun, Trash2, UserRound } from "lucide-react";
 import { api } from "@/components/api";
 import { Button, Field, Notice, PageHeader, Spinner } from "@/components/ui";
+import { professionalNameSchema } from "@/lib/validation";
 
 type Profile = { name: string; specialty: string; cro: string; phone: string; email: string; address: string; logo_data_url: string };
 type Theme = "light" | "dark" | "system";
@@ -29,7 +30,10 @@ export default function ProfilePage() {
   }, []);
 
   async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setSaving(true); setError(""); setSuccess("");
+    event.preventDefault();
+    const parsedName = professionalNameSchema.safeParse(profile.name);
+    if (!parsedName.success) { setError(parsedName.error.issues[0]?.message || "Confira o nome profissional."); return; }
+    setSaving(true); setError(""); setSuccess("");
     try { const data = await api<{ profile: Profile }>("/api/profile", { method: "PUT", body: JSON.stringify(profile) }); setProfile({ ...emptyProfile, ...data.profile }); setSuccess("Perfil salvo. Seus próximos documentos usarão estas informações."); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível salvar o perfil."); }
     finally { setSaving(false); }
@@ -68,7 +72,7 @@ export default function ProfilePage() {
         <div className="card-header"><div><h2>Informações profissionais</h2><p className="muted">Usadas no cabeçalho de relatórios e documentos.</p></div></div>
         <div className="card-body stack">
           <div className="profile-brand-row"><div className="profile-logo">{profile.logo_data_url ? <Image unoptimized width={150} height={150} src={profile.logo_data_url} alt="Logotipo profissional" /> : <UserRound size={32} />}</div><div className="stack compact"><h3>Seu logotipo</h3><p className="muted">PNG ou JPEG, até 750 KB.</p><div className="actions"><Button variant="secondary" size="sm" type="button" onClick={() => fileInput.current?.click()}><ImagePlus size={16} /> {profile.logo_data_url ? "Trocar imagem" : "Adicionar imagem"}</Button>{profile.logo_data_url && <Button variant="ghost" size="sm" type="button" aria-label="Remover logotipo" onClick={() => setProfile({ ...profile, logo_data_url: "" })}><Trash2 size={16} /></Button>}</div><input ref={fileInput} type="file" accept="image/png,image/jpeg" hidden onChange={(event) => void chooseLogo(event)} /></div></div>
-          <Field label="Nome profissional"><input className="input" autoComplete="name" required maxLength={160} value={profile.name} onChange={(event) => setProfile({ ...profile, name: event.target.value })} placeholder="Como você assina seus documentos" /></Field>
+          <Field label="Nome profissional"><input className="input" autoComplete="name" required minLength={2} maxLength={120} value={profile.name} onChange={(event) => setProfile({ ...profile, name: event.target.value })} placeholder="Como você assina seus documentos" /></Field>
           <div className="form-grid"><Field label="Especialidade"><input className="input" maxLength={120} value={profile.specialty} onChange={(event) => setProfile({ ...profile, specialty: event.target.value })} placeholder="Endodontia" /></Field><Field label="CRO"><input className="input" maxLength={60} value={profile.cro} onChange={(event) => setProfile({ ...profile, cro: event.target.value })} placeholder="UF 00000" /></Field></div>
           <div className="form-grid"><Field label="Telefone profissional"><input className="input" type="tel" autoComplete="tel" maxLength={40} value={profile.phone} onChange={(event) => setProfile({ ...profile, phone: event.target.value })} placeholder="(00) 00000-0000" /></Field><Field label="E-mail profissional"><input className="input" type="email" autoComplete="email" maxLength={254} value={profile.email} onChange={(event) => setProfile({ ...profile, email: event.target.value })} placeholder="voce@clinica.com.br" /></Field></div>
           <Field label="Endereço profissional"><textarea className="textarea" rows={2} autoComplete="street-address" maxLength={500} value={profile.address} onChange={(event) => setProfile({ ...profile, address: event.target.value })} placeholder="Clínica, endereço e cidade" /></Field>
