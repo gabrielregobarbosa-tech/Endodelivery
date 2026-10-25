@@ -101,6 +101,17 @@ test("profissional cadastra paciente, ficha, radiografia, agenda e documento", a
   await expect(page.getByLabel("CRO", { exact: true })).toHaveValue("TESTE 00000");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   if (process.env.CAPTURE_UI === "1") await page.screenshot({ path: testInfo.outputPath("perfil-escuro.png"), fullPage: true });
+  await expect.poll(() => page.evaluate(async () => Boolean((await navigator.serviceWorker.getRegistration())?.active))).toBeTruthy();
+  const cachedPublicPaths = await page.evaluate(async () => {
+    const paths: string[] = [];
+    for (const key of await caches.keys()) {
+      if (!key.startsWith("endodelivery-public-")) continue;
+      for (const request of await (await caches.open(key)).keys()) paths.push(new URL(request.url).pathname);
+    }
+    return paths;
+  });
+  expect(cachedPublicPaths).toContain("/brand/mark.svg");
+  expect(cachedPublicPaths.some((path) => path.startsWith("/api/") || path.startsWith("/patients"))).toBeFalsy();
   await page.getByRole("button", { name: "Sair da conta", exact: true }).click();
   await expect(page).toHaveURL(/\/login$/);
   expect(errors).toEqual([]);

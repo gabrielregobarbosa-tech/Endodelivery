@@ -1,6 +1,6 @@
 /* Somente recursos públicos. Informações clínicas, APIs, imagens e PDFs nunca são armazenados offline. */
-const CACHE = "endodelivery-public-v1";
-const PUBLIC_ASSETS = ["/offline.html", "/icon.svg", "/icon-192.png", "/icon-512.png"];
+const CACHE = "endodelivery-public-v2";
+const PUBLIC_ASSETS = ["/offline.html", "/icon.svg", "/brand/mark.svg", "/icon-192.png", "/icon-512.png", "/brand/apple-touch-icon.png", "/icon-maskable-512.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(PUBLIC_ASSETS)).then(() => self.skipWaiting()));

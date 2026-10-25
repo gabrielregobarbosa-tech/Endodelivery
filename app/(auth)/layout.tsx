@@ -1,5 +1,27 @@
-import { Brand } from '@/components/brand';
-import { Sparkles, ShieldCheck, HeartPulse } from 'lucide-react';
+import { Brand, BrandMark } from "@/components/brand";
+import { ClipboardList, ShieldCheck } from "lucide-react";
+
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
-  return <main className="auth-layout"><section className="auth-story"><Brand /><div className="auth-story-body"><span className="auth-pill"><Sparkles size={15} /> Feito para endodontistas</span><h1>Mais tempo para<br />o que importa.<br /><em>Seu paciente.</em></h1><p>Prontuários, agenda e documentos.<br />A sua rotina clínica, em um só lugar.</p><div className="auth-illustration"><div className="illustration-card"><span className="illustration-icon"><HeartPulse size={27} /></span><div><strong>Cuidado que acompanha você</strong><small>Do primeiro atendimento ao relatório.</small></div><span className="illustration-dot" /></div></div></div><div className="auth-story-footer"><ShieldCheck size={17} /> Uma experiência pensada para o cuidado.</div></section><section className="auth-form-section"><div className="auth-mobile-brand"><Brand /></div>{children}<p className="auth-footer">EndoDelivery · Sua clínica, mais próxima de você.</p></section></main>;
+  return <main className="auth-layout">
+    <section className="auth-story">
+      <Brand />
+      <div className="auth-story-body">
+        <span className="auth-pill"><ClipboardList size={15} /> Gestão clínica em endodontia</span>
+        <h1>Seu prontuário endodôntico, <em>onde você estiver.</em></h1>
+        <p>Pacientes, histórico clínico e documentos.<br />Organizados para acompanhar sua rotina profissional.</p>
+        <div className="auth-illustration">
+          <div className="illustration-card">
+            <BrandMark size={68} className="illustration-brand" />
+            <div><strong>Um prontuário completo</strong><small>Tratamentos, canais e radiografias reunidos.</small></div>
+          </div>
+        </div>
+      </div>
+      <div className="auth-story-footer"><ShieldCheck size={17} /> Acesso individual aos seus registros clínicos.</div>
+    </section>
+    <section className="auth-form-section">
+      <div className="auth-mobile-brand"><Brand /><p className="auth-mobile-slogan">Seu prontuário endodôntico, onde você estiver.</p></div>
+      {children}
+      <p className="auth-footer">EndoDelivery · Gestão clínica em endodontia.</p>
+    </section>
+  </main>;
 }

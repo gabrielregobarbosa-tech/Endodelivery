@@ -1,21 +1,40 @@
-# Validação da primeira etapa
+# Validação da atualização para Vercel e da identidade visual
 
-Executada em 24/10/2026, com Node.js 24.19.0 e dados exclusivamente fictícios.
+Executada em 24/10/2026 (America/Manaus), com Node.js 24.19.0, usando exclusivamente contas, pacientes, imagens e documentos fictícios.
 
 | Verificação | Resultado |
 | --- | --- |
-| Instalação reproduzível com `npm ci` e lockfile | Passou |
-| `npm run check` | Lint e TypeScript passaram; 15 testes passaram, sem falhas ou testes ignorados |
-| `npm run db:check` | Conexão, migração e integridade SQLite verificadas |
-| `npm run build` | Build de produção e servidor standalone gerados |
-| `CLOUD_BROWSER_TESTS=1 npm run test:e2e` | 5 testes passaram, sem falhas ou testes ignorados |
+| `npm ci` com o lockfile atualizado | Passou |
+| `npm run check` | Lint e TypeScript passaram; 39 testes passaram, sem falhas ou testes ignorados |
+| `npm run test:postgres` com PostgreSQL 17 real local | 3 testes passaram, sem falhas ou testes ignorados |
+| `VERCEL=1 npm run build:vercel` | Build Next.js para Vercel passou sem exigir credenciais durante o build |
+| `npm run test:serverless` | 1 teste passou; configuração incompleta retorna 503 seguro e não cria banco local/temporário |
+| `npm run build` | Build e servidor standalone passaram; fontes e WASM incluídos |
+| `CLOUD_BROWSER_TESTS=1 npm run test:e2e` | 14 testes passaram com SQLite temporário isolado |
+| `TEST_DATABASE_URL=… CLOUD_BROWSER_TESTS=1 npm run test:e2e` | 14 testes passaram com PostgreSQL 17 real local e arquivos privados locais |
+| `npm run db:check` | Conexão, migrações e integridade SQLite verificadas; PostgreSQL também verificado pelo mesmo comando |
 | `npm audit --omit=dev --audit-level=high` | Nenhuma vulnerabilidade encontrada nas dependências de produção |
-| Servidor de desenvolvimento | Inicialização, login HTTP 200, banco pronto e acesso clínico sem sessão HTTP 401 |
+| Servidor de desenvolvimento Webpack | Cadastro 201, perfil/grafia exata 200, logout, sessão encerrada 401 e novo login 200 verificados |
+| Identidade visual | Login desktop, cadastro móvel e login escuro capturados; sem erro JavaScript ou overflow horizontal |
 
-Os três testes de API cobrem autenticação, proteção de origem, persistência em nova sessão, associações entre registros, validações, agenda, imagens privadas, PDFs, modelos e exclusões. Contas distintas não conseguem ler, modificar ou vincular registros de outra conta.
+São **71 testes automatizados aprovados** nas cinco execuções de testes acima (39 + 3 + 1 + 14 + 14). As verificações visuais e de desenvolvimento são evidências adicionais, não testes contados novamente.
 
-Os dois testes de navegador percorrem o mesmo fluxo completo em desktop e em tamanho de iPhone: cadastro de conta e paciente, atendimento com canal, radiografia, relatório PDF, agenda/status, documento/PDF, perfil, tema persistente e logout. O Chromium do ambiente usa renderização sem WebGL; o renderizador gráfico por software padrão apresentou travamentos neste runner. As verificações de segurança do navegador permanecem habilitadas. Capturas adicionais podem ser solicitadas com `CAPTURE_UI=1`.
+## O que foi exercitado
 
-A validação móvel usa Chromium com emulação de iPhone. Safari/iPhone físico, instalação pela Tela de Início, seletor nativo de compartilhamento e envio pelo WhatsApp exigem validação manual em HTTPS. O teste automatizado verifica a geração e o download dos arquivos, sem enviar documentos a terceiros.
+Os testes de API cobrem autenticação, cookies, proteção de origem, persistência em nova sessão, cadastros concorrentes, limites compartilhados, isolamento entre contas, agenda, pacientes, fichas/canais, imagens privadas, modelos, documentos, PDFs e exclusões. O mesmo conjunto executou nos dois bancos.
 
-O Dockerfile e a configuração de CI foram preparados, mas não executados em um daemon Docker ou no GitHub Actions durante esta etapa. Também não foi validada a restauração em uma nova tarefa da nuvem nem realizada implantação clínica. Consulte `privacy.md` antes de planejar uso com dados reais.
+Foram verificados os cinco nomes solicitados e entradas com Unicode combinante, apóstrofo curvo e Han, preservando a grafia no cadastro, perfil, sessão e documentos. Testes de PDF reconstroem o texto do arquivo serializado; uma verificação independente com Poppler extraiu 12 nomes exatamente e renderizou os glifos sem avisos, incluindo japonês e coreano. Nomes com glifos ainda fora da cobertura recebem erro explícito, sem alterar o registro.
+
+Os testes de navegador percorrem o fluxo completo em desktop e em tamanho de iPhone: cadastro, paciente, atendimento com canal, radiografia, relatório PDF, agenda/status, documento/PDF, perfil, tema persistente e logout. A PWA registrou o service worker e armazenou a nova marca, sem guardar rotas clínicas no cache offline.
+
+O PostgreSQL real foi executado em um contêiner de teste acessível somente no loopback. Os testes de migração criaram schemas próprios e verificaram inicializações concorrentes, persistência após encerrar todos os pools, unicidade, chaves estrangeiras de propriedade e contadores atômicos. Nenhum banco remoto de produção foi usado.
+
+## Limites da evidência
+
+O adaptador Vercel Blob foi validado com cliente simulado, incluindo acesso privado, ausência de fallback local, limites e tratamento de falhas. Não havia token de um store remoto disponível; esses testes não comprovam permissões ou privacidade de um Blob Store real.
+
+A validação móvel usa Chromium com emulação de iPhone. Safari/iPhone físico, instalação na Tela de Início e compartilhamento nativo com WhatsApp continuam exigindo validação manual em HTTPS. Os testes geram e baixam PDFs; não enviam documentos a terceiros.
+
+As consultas a `endodelivery.vercel.app` foram bloqueadas pelo proxy de rede antes de atingir a aplicação. Não havia autenticação Vercel para consultar variáveis ou logs. **O deploy e o cadastro no site publicado não foram confirmados.** A configuração externa e a validação necessária estão em [Vercel](vercel.md); a análise do problema está em [Diagnóstico](production-diagnosis.md).
+
+O Dockerfile da aplicação e o workflow GitHub Actions foram preparados, mas não executados nessa infraestrutura de destino. Também não foi validada uma nova tarefa restaurada do snapshot. Consulte [Privacidade](privacy.md) antes de planejar uso com dados reais.
