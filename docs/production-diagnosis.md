@@ -5,10 +5,10 @@
 - O commit inicial `213b426` abria SQLite em `process.cwd()/data/endodelivery.sqlite` durante o cadastro, criava diretórios e executava migrações síncronas. Não havia conexão PostgreSQL nem adaptador de armazenamento remoto.
 - Esse fluxo depende de disco local persistente. O filesystem da aplicação em funções serverless da Vercel não oferece essa garantia; `/tmp` não é persistência clínica e não foi usado como correção.
 - O nome profissional já aceitava pontuação no cadastro inicial. Uma mensagem genérica de erro não demonstra que pontos ou acentos eram a causa da falha. Havia, porém, perda de caracteres fora de WinAnsi na exportação PDF, corrigida com fontes Unicode.
-- As consultas desta sessão ao domínio publicado foram bloqueadas pelo proxy de rede com `CONNECT ... 403`, antes de obter uma resposta da aplicação. Isso não é um HTTP 403 observado no EndoDelivery.
+- As consultas iniciais foram bloqueadas pelo proxy com `CONNECT ... 403`; posteriormente o acesso ficou disponível. Após o push, o site retornou login HTTP 200 com o slogan oficial e SVG idêntico à nova marca. A atualização publicada foi confirmada por essas respostas.
 - Não havia autenticação Vercel ou arquivo de vínculo do projeto disponível nesta máquina. Nenhuma variável ou log do painel de produção foi inspecionado. A ausência de credenciais nesta máquina não comprova ausência das variáveis na Vercel.
 
-Portanto, foi identificada e corrigida uma incompatibilidade concreta no código, mas a exceção específica do deploy original e o funcionamento do cadastro publicado ainda exigem logs/acesso à implantação. Não se deve declarar a produção corrigida com base somente nos testes locais.
+O cadastro publicado foi testado com nome, e-mail e senha exclusivamente fictícios: retornou HTTP 503, `SERVICE_CONFIGURATION`, referência `b014208e-7baf-4b0d-9695-eb1bedbab36d`. A verificação do banco retornou o mesmo código, referência `aa7a21ec-e7a2-40ff-81bf-3b29597e9037`. Como esses fluxos falham na configuração do banco antes de usar o Blob, é necessário conferir o provider e a URL PostgreSQL no ambiente Production. Não foi criada conta nem registro clínico nessa tentativa. A exceção específica da versão antiga não foi recuperada dos logs; a versão nova e o bloqueio de configuração atual foram confirmados por HTTP. O cadastro em produção ainda não funciona e não foi declarado corrigido.
 
 ## Alterações
 

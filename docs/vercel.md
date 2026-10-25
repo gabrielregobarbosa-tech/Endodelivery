@@ -34,7 +34,7 @@ Se algum serviço só foi conectado a Preview ou Development, ajuste a conexão 
 2. O arquivo `vercel.json` já declara o framework **Next.js** e o comando **`npm run build:vercel`**. Se existe um override manual de build antigo, alinhe-o a essa configuração.
 3. O modo `standalone` e os scripts de inicialização locais são usados fora da Vercel. Não é necessário iniciar `scripts/start.mjs` como servidor nessa plataforma.
 4. Depois que os commits atualizados estiverem na branch `main`, o push dispara a implantação se a integração GitHub do projeto estiver configurada para essa branch.
-5. Após alterar variáveis, abra **Deployments** e execute **Redeploy** da implantação que contém o código atualizado. Reimplantar um commit antigo não incorpora as correções novas.
+5. Se o novo commit não aparecer em Deployments, confira em **Settings → Git** a conexão com `gabrielregobarbosa-tech/Endodelivery` e a branch `main` usada em Production. Após alterar variáveis, abra **Deployments** e execute **Redeploy** da implantação que contém o código atualizado. Reimplantar um commit antigo não incorpora as correções novas.
 6. Aguarde o estado **Ready** e abra o endereço de produção. Esse estado confirma a implantação, mas ainda é necessário testar os serviços abaixo.
 
 ## 4. Confirmar o funcionamento no site publicado
@@ -73,6 +73,6 @@ Compartilhe apenas horário, status HTTP, referência e código seguro do erro. 
 - Se existem dados no SQLite original ou radiografias locais, esta configuração **não os importa nem os apaga automaticamente**. Preserve backups consistentes e planeje uma migração separada antes de trocar o armazenamento de dados existentes.
 - Testes com PostgreSQL real local não confirmam acesso ao Neon de produção. Testes locais do adaptador Blob com SDK simulado não confirmam token, privacidade ou permissões do store remoto; isso precisa ser validado no deploy.
 
-Nesta sessão não há acesso autorizado ao painel ou aos logs da Vercel, e as consultas ao domínio pela rede do ambiente foram bloqueadas com `403`. Esse bloqueio não confirma o estado do site para outros usuários. Portanto, o deploy e o cadastro publicados **ainda não estão confirmados** por esta execução.
+Não há autenticação disponível nesta sessão para ler o painel ou os logs da Vercel. Após o bloqueio inicial de rede, foi possível verificar o site: a nova marca e o slogan estão publicados, mas cadastro e verificação do banco retornaram HTTP 503 com `SERVICE_CONFIGURATION`. Isso indica que a função ainda não dispõe de uma configuração válida de banco persistente. Confira as variáveis e a conexão do PostgreSQL em Production e faça Redeploy. O cadastro, login e armazenamento publicados **ainda não foram confirmados funcionando**.
 
 Esses passos não representam certificação de conformidade com a LGPD nem liberação para usar dados clínicos reais. Consulte `privacy.md` para os controles operacionais e as limitações de privacidade.
