@@ -40,3 +40,17 @@ A validação móvel usa Chromium com emulação de iPhone. Safari/iPhone físic
 As primeiras consultas foram bloqueadas pelo proxy; posteriormente foi possível alcançar `endodelivery.vercel.app`. Após o push, o login retornou 200 e a marca publicada foi comparada byte a byte com o novo SVG. O cadastro com dados fictícios retornou 503 `SERVICE_CONFIGURATION`; a verificação do banco retornou o mesmo código. A atualização está publicada, mas **cadastro e banco de produção ainda estão bloqueados por configuração**. Nenhuma conta foi criada nessa tentativa. Não havia autenticação Vercel para consultar variáveis ou logs. A configuração externa e a validação necessária estão em [Vercel](vercel.md); as referências das falhas estão em [Diagnóstico](production-diagnosis.md).
 
 O Dockerfile da aplicação e o workflow GitHub Actions foram preparados, mas não executados nessa infraestrutura de destino. Também não foi validada uma nova tarefa restaurada do snapshot. Consulte [Privacidade](privacy.md) antes de planejar uso com dados reais.
+
+## Atualização de autenticação Blob — 26/10/2026
+
+As capturas fornecidas pelo usuário mostraram a integração atual com `BLOB_STORE_ID` e `BLOB_WEBHOOK_PUBLIC_KEY`. A exigência exclusiva de `BLOB_READ_WRITE_TOKEN` foi corrigida para aceitar a identidade automática OIDC do projeto conectado. A documentação foi alinhada à configuração atual da Vercel.
+
+- `npm run check`: lint, TypeScript e **44 testes** passaram, sem falhas ou testes ignorados. O conjunto de armazenamento passou de cinco para dez testes.
+- `VERCEL=1 npm run build:vercel`: passou com a configuração final.
+- `npm run test:serverless`: um teste passou; continua recusando banco local/temporário na Vercel sem configuração persistente.
+- `npm run build` e `CLOUD_BROWSER_TESTS=1 npm run test:e2e`: build standalone passou e os **14 testes** de API, desktop e celular passaram, incluindo o fluxo clínico completo com imagens e PDFs. São **59 testes aprovados nesta etapa** (44 + 1 + 14), sem repetir na contagem os resultados da etapa anterior.
+- O servidor de desenvolvimento foi reiniciado e verificado: banco pronto em `/api/health` (200), login (200) e pacientes sem sessão (401). O servidor permanece disponível internamente na porta 3000.
+- O SDK oficial instalado foi exercitado com transporte simulado, toda conexão externa bloqueada e identidades exclusivamente fictícias no contexto de requisição da Vercel. Envio, leitura privada sem cache e exclusão usaram a identidade atual após cada troca de contexto, sem `VERCEL_OIDC_TOKEN` no ambiente ou credencial OIDC passada manualmente. Isso verifica a integração com o SDK e a ausência de captura da identidade, mas não demonstra permissões no serviço remoto.
+- Também foram verificados token estático fora da Vercel, rejeição e limpeza de objeto público, configurações incompletas sem fallback na Vercel e armazenamento local funcional quando existe apenas uma identidade Vercel genérica para outro serviço.
+
+O PostgreSQL não foi alterado nesta correção. Os testes com PostgreSQL real de 24/10 permanecem evidência da etapa anterior e não foram contados como nova execução.

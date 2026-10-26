@@ -15,6 +15,8 @@ const BLOB_IMAGE = new RegExp(`^blob:(radiographs/${UUID_IMAGE})$`, "i");
 
 type Environment = Record<string, string | undefined>;
 type Provider = "local" | "vercel-blob";
+type BlobAuthentication = { storeId: string; token?: never } | { token: string; storeId?: never };
+type StorageConfiguration = { provider: "local" } | { provider: "vercel-blob"; authentication: BlobAuthentication };
 
 export function maxImageBytes(env: Environment = process.env): number {
   return env.VERCEL === "1" ? VERCEL_MAX_IMAGE_BYTES : MAX_IMAGE_BYTES;
@@ -24,15 +26,21 @@ function sizeError(env: Environment): HttpError {
   return new HttpError(413, `A radiografia deve ter até ${maxImageBytes(env) / 1024 / 1024} MB. Exporte uma imagem menor e tente novamente.`);
 }
 
-function configuration(env: Environment): { provider: Provider; token?: string } {
+function configuration(env: Environment): StorageConfiguration {
   const configured = env.STORAGE_PROVIDER?.trim();
   if (configured && !["local", "vercel-blob"].includes(configured)) throw new ServiceError("configuration", "STORAGE_PROVIDER_INVALID");
-  const provider = configured || (env.VERCEL === "1" || env.BLOB_READ_WRITE_TOKEN ? "vercel-blob" : "local");
+  const provider = configured || (env.VERCEL === "1" || env.BLOB_READ_WRITE_TOKEN || env.BLOB_STORE_ID ? "vercel-blob" : "local");
   if (env.VERCEL === "1" && provider === "local") throw new ServiceError("configuration", "STORAGE_PERSISTENCE_REQUIRED");
   if (provider === "vercel-blob") {
-    const token = env.BLOB_READ_WRITE_TOKEN;
-    if (!token?.trim()) throw new ServiceError("configuration", "STORAGE_NOT_CONFIGURED");
-    return { provider, token };
+    const storeId = env.BLOB_STORE_ID?.trim();
+    // On Vercel, identity may arrive in request context rather than process.env.
+    // Pass only the store: the SDK obtains and refreshes OIDC credentials itself.
+    if (storeId && (env.VERCEL === "1" || env.VERCEL_OIDC_TOKEN?.trim())) {
+      return { provider, authentication: { storeId } };
+    }
+    const token = env.BLOB_READ_WRITE_TOKEN?.trim();
+    if (token) return { provider, authentication: { token } };
+    throw new ServiceError("configuration", "STORAGE_NOT_CONFIGURED");
   }
   return { provider: "local" };
 }
@@ -73,7 +81,7 @@ function operationalError(error: unknown): never {
   throw new ServiceError("storage", "STORAGE_UNAVAILABLE", error);
 }
 
-type PrivateBlobOptions = { token: string; access: "private" };
+type PrivateBlobOptions = BlobAuthentication & { access: "private" };
 export interface PrivateBlobClient {
   put(pathname: string, bytes: Buffer, options: PrivateBlobOptions & {
     addRandomSuffix: false; allowOverwrite: false; contentType: "image/jpeg"; cacheControlMaxAge: number;
@@ -81,7 +89,7 @@ export interface PrivateBlobClient {
   get(pathname: string, options: PrivateBlobOptions & { useCache: false }): Promise<{
     stream: ReadableStream<Uint8Array>; size: number; contentType: string;
   } | null>;
-  del(pathname: string, options: { token: string }): Promise<void>;
+  del(pathname: string, options: BlobAuthentication): Promise<void>;
 }
 
 const privateBlobClient: PrivateBlobClient = {
@@ -141,9 +149,9 @@ export function createRadiographStorage(options: { env?: Environment; blobClient
           return filename;
         }
         const pathname = `radiographs/${filename}`;
-        const token = settings.token!;
+        const authentication = settings.authentication;
         const blob = await client.put(pathname, normalized, {
-          token, access: "private", addRandomSuffix: false, allowOverwrite: false,
+          ...authentication, access: "private", addRandomSuffix: false, allowOverwrite: false,
           contentType: "image/jpeg", cacheControlMaxAge: 60,
         });
         let privateResponse = false;
@@ -154,10 +162,10 @@ export function createRadiographStorage(options: { env?: Environment; blobClient
             && url.pathname === `/${pathname}` && blob.pathname === pathname;
         } catch { /* Malformed remote responses never become stored references. */ }
         if (!privateResponse) {
-          await client.del(pathname, { token });
+          await client.del(pathname, authentication);
           throw new ServiceError("configuration", "STORAGE_MUST_BE_PRIVATE");
         }
-        // Persist only a logical pathname; the SDK derives its store URL from the credential.
+        // Persist only a logical pathname; the SDK derives its URL from the store or credential.
         return `blob:${pathname}`;
       } catch (error) { return operationalError(error); }
     },
@@ -166,7 +174,7 @@ export function createRadiographStorage(options: { env?: Environment; blobClient
       const settings = configuration(env);
       try {
         if (settings.provider === "local") return await readFile(localImagePath(reference, env));
-        const blob = await client.get(blobPath(reference), { token: settings.token!, access: "private", useCache: false });
+        const blob = await client.get(blobPath(reference), { ...settings.authentication, access: "private", useCache: false });
         if (!blob) throw missingImage();
         if (blob.contentType !== "image/jpeg" || blob.size > maxImageBytes(env)) {
           await blob.stream.cancel();
@@ -182,7 +190,7 @@ export function createRadiographStorage(options: { env?: Environment; blobClient
       const settings = configuration(env);
       try {
         if (settings.provider === "vercel-blob") {
-          await client.del(blobPath(reference), { token: settings.token! });
+          await client.del(blobPath(reference), settings.authentication);
           return;
         }
         await unlink(localImagePath(reference, env));

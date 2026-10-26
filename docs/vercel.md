@@ -8,7 +8,7 @@ O aplicativo precisa de **PostgreSQL persistente** para contas e registros, e de
 2. Adicione ou conecte uma integração PostgreSQL gerenciada, como **Neon**. Se já existe um banco adequado, conecte-o ao projeto; não é necessário criar outro apenas para esta alteração.
 3. Use a conexão com **pooler** fornecida pela integração. Ela deve permitir gravar registros e inicializar o esquema; uma conexão somente de leitura não atende ao aplicativo. Preserve a configuração TLS indicada pelo provedor.
 4. Na área Storage, crie ou conecte um **Vercel Blob Store com acesso privado**. Um store público não deve receber radiografias.
-5. Conecte os dois serviços ao projeto para que as integrações disponibilizem suas variáveis de ambiente. Os nomes das ações podem variar entre a Vercel e o provedor.
+5. Conecte os dois serviços ao projeto para que as integrações disponibilizem suas variáveis de ambiente. Para o Blob, a conexão atual usa autenticação automática OIDC: `BLOB_STORE_ID` identifica o armazenamento, e a Vercel fornece a identidade temporária durante a execução. `BLOB_WEBHOOK_PUBLIC_KEY` também pode aparecer na lista de variáveis. Essa configuração dispensa um token estático de leitura e escrita na Vercel. Os nomes das ações podem variar entre a Vercel e o provedor.
 
 Não copie URLs de conexão, senhas ou tokens para o chat, para o GitHub ou para arquivos versionados. Valores de credenciais devem permanecer nas configurações seguras dos serviços.
 
@@ -20,11 +20,14 @@ Em **Settings → Environment Variables**, confira o ambiente **Production**:
 | --- | --- |
 | `DATABASE_URL` **ou** `POSTGRES_URL` | URL PostgreSQL com pooler gerada pelo provedor. A aplicação aceita os dois nomes; prefira o nome criado pela integração. Não use um valor de exemplo. |
 | `DATABASE_PROVIDER` | `postgres` |
-| `BLOB_READ_WRITE_TOKEN` | Token disponibilizado automaticamente pela conexão do Blob Store privado ao projeto. |
+| `BLOB_STORE_ID` | Identificador disponibilizado pela conexão do Blob Store privado ao projeto. Na Vercel, o SDK usa a identidade OIDC da função automaticamente. |
+| `BLOB_READ_WRITE_TOKEN` | Alternativa para executar fora da Vercel ou usar uma conexão estática existente. É dispensável quando o projeto usa o Blob conectado com OIDC. Mantenha o valor somente no painel seguro. |
 | `STORAGE_PROVIDER` | `vercel-blob` |
 | `APP_ORIGIN` | `https://endodelivery.vercel.app` |
 
 Não configure `DATABASE_PATH` ou `FILE_STORAGE_PATH` como solução de persistência na Vercel. Também não redirecione o banco ou as radiografias para `/tmp`: esse diretório é temporário. A aplicação recusa armazenamento clínico local nesse ambiente.
+
+Se aparecem apenas `BLOB_STORE_ID` e `BLOB_WEBHOOK_PUBLIC_KEY` entre as variáveis de Blob, isso é compatível com a integração atual. Em **Storage → seu Blob Store → Projects**, confira a conexão do projeto com **Production** e, nas configurações do store, o acesso **Private**. A Vercel fornece `VERCEL_OIDC_TOKEN` automaticamente na execução; não crie, copie ou fixe esse token manualmente. O SDK oficial mantém sua renovação. Consulte a [documentação de autenticação do Blob](https://vercel.com/docs/vercel-blob/using-blob-sdk#authentication).
 
 Se algum serviço só foi conectado a Preview ou Development, ajuste a conexão para Production. Uma variável adicionada depois de um deploy exige uma nova implantação para ser utilizada. Para outro domínio oficial ou uma implantação Preview, configure a origem HTTPS correspondente nesse ambiente.
 
@@ -62,7 +65,7 @@ Compartilhe apenas horário, status HTTP, referência e código seguro do erro. 
 | `400` — validação | Confira os campos e a confirmação de senha. Uma conta de teste já existente deve usar login ou outro e-mail de teste. |
 | `503` — configuração | Confira as variáveis no ambiente Production e se ocorreu Redeploy depois de configurá-las. |
 | `503` — dados | Confira o estado do PostgreSQL, a URL com pooler e a conexão do serviço ao projeto. |
-| `503` — imagens | Confira o token, a conexão do Blob Store e seu modo privado. |
+| `503` — imagens | Confira a conexão do Blob Store com Production, `BLOB_STORE_ID` e o modo privado; se usa credencial estática, confira `BLOB_READ_WRITE_TOKEN`. |
 | `500` — erro inesperado | Localize a referência nos logs para investigação; não tente corrigir movendo dados clínicos para arquivos temporários. |
 
 ## Limites e preservação dos dados

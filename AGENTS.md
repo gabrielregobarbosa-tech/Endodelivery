@@ -9,6 +9,7 @@
 - Não disponibilize banco ou radiografias em `public/`, não registre conteúdo clínico nos logs e não salve informações clínicas no `localStorage` ou no cache do service worker.
 - Migrações e adaptadores ficam em `lib/database/`; `lib/db.ts` expõe a seleção e a fachada assíncrona. Preserve dados existentes e use transações com o cliente scoped recebido pelo callback. Banco, uploads, `.env`, cookies e relatórios de teste não pertencem ao Git.
 - Na Vercel, PostgreSQL gerenciado e Blob privado são obrigatórios. Nunca faça fallback para SQLite, arquivos locais ou `/tmp` nessa plataforma. Consulte `docs/vercel.md`.
+- O Blob conectado na Vercel usa `BLOB_STORE_ID` e identidade OIDC automática; deixe o SDK obter e renovar o token. Não exija token estático nesse modo nem capture/passe `VERCEL_OIDC_TOKEN`. Preserve o suporte a `BLOB_READ_WRITE_TOKEN` para conexões estáticas.
 - `npm run test:postgres` exige `TEST_DATABASE_URL` de teste. Os E2E não herdam `DATABASE_URL` de produção; PostgreSQL só é usado quando `TEST_DATABASE_URL` está explícita. Testes de Blob sem credenciais são testes de contrato com cliente simulado, não prova de acesso ao serviço real.
 - APIs REST usam `snake_case`; mantenha a interface e o domínio desacoplados para o futuro cliente SwiftUI.
 - A interface é em português brasileiro, responsiva para iPhone e acessível por teclado. Preserve temas claro/escuro e áreas seguras do dispositivo.

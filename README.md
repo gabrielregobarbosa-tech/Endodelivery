@@ -25,6 +25,8 @@ O banco SQLite é criado e migrado automaticamente em `data/endodelivery.sqlite`
 
 Quando `DATABASE_URL` ou `POSTGRES_URL` está configurada, o mesmo domínio usa PostgreSQL. `DATABASE_PROVIDER=sqlite` pode selecionar o modo local fora da Vercel; a Vercel exige PostgreSQL. Migrações preservam os dados existentes no backend escolhido e coordenam inicializações simultâneas. Trocar de backend não importa automaticamente registros ou arquivos antigos.
 
+Na Vercel, conecte um Blob Store **privado** ao projeto e ao ambiente Production. A integração atual usa `BLOB_STORE_ID` com autenticação automática OIDC, renovada pelo SDK; `BLOB_READ_WRITE_TOKEN` é uma alternativa para conexões estáticas ou execução fora da plataforma. Não copie nem fixe a identidade temporária `VERCEL_OIDC_TOKEN`. Consulte o [guia de configuração](docs/vercel.md).
+
 ## Experimentar os fluxos
 
 1. Em **Meu perfil**, preencha nome profissional, especialidade, CRO e contato fictícios. Adicione um logotipo PNG ou JPEG de até 750 KB. Essas informações serão inseridas no cabeçalho dos PDFs.
