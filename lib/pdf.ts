@@ -140,7 +140,7 @@ class ClinicalPdf {
       const match = /^data:image\/(png|jpeg);base64,([A-Za-z0-9+/=\s]+)$/.exec(logo);
       if (match) {
         try {
-          const bytes = Buffer.from(match[2], "base64");
+          const bytes = new Uint8Array(Buffer.from(match[2], "base64"));
           builder.logo = match[1] === "png" ? await document.embedPng(bytes) : await document.embedJpg(bytes);
         } catch { /* Uma logo inválida nunca impede a exportação das informações clínicas. */ }
       }
@@ -243,7 +243,8 @@ class ClinicalPdf {
     this.heading(`Radiografia ${index + 1}`);
     this.field("Registro", formatDate(image.created_at.slice(0, 10)));
     this.paragraph(image.caption || "Sem legenda", { gap: 12 });
-    const embedded = await this.document.embedJpg(image.image);
+    // pdf-lib's JPEG parser reads the backing buffer, ignoring a view's byte offset.
+    const embedded = await this.document.embedJpg(new Uint8Array(image.image));
     const availableHeight = Math.min(this.y - 77, 550);
     if (availableHeight < 80) this.newPage();
     const dimensions = embedded.scaleToFit(CONTENT_WIDTH, Math.min(this.y - 77, 550));

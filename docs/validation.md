@@ -54,3 +54,9 @@ As capturas fornecidas pelo usuário mostraram a integração atual com `BLOB_ST
 - Também foram verificados token estático fora da Vercel, rejeição e limpeza de objeto público, configurações incompletas sem fallback na Vercel e armazenamento local funcional quando existe apenas uma identidade Vercel genérica para outro serviço.
 
 O PostgreSQL não foi alterado nesta correção. Os testes com PostgreSQL real de 24/10 permanecem evidência da etapa anterior e não foram contados como nova execução.
+
+## Verificação em produção e correção do PDF — 26/10/2026
+
+Após a implantação OIDC, o banco, cadastro, perfil, pacientes, upload/leitura de imagem privada, recusa de acesso anônimo, logout/login e persistência em nova sessão foram verificados no endereço publicado. Pacientes e imagens artificiais foram excluídos ao final e a remoção foi confirmada por respostas 404. As contas técnicas de teste permanecem sem dados clínicos e sem credenciais padrão.
+
+O relatório sem imagem passou, mas o relatório com JPEG artificial expôs uma falha de interpretação de fatias de `Buffer` no parser JPEG de `pdf-lib`. O mesmo erro foi reproduzido localmente, inclusive com o buffer retornado pelo leitor de Blob. A incorporação agora recebe uma cópia exata dos bytes, tanto para radiografias como para logotipos. O teste de regressão verifica conteúdo e dimensões dos dois objetos JPEG no PDF serializado; ele falhava antes da correção. Os nove testes de PDF passaram após a alteração. `npm run check` passou com lint, TypeScript e **45 testes**, e `npm run build` passou com o servidor standalone preparado. A confirmação no endereço publicado deve ser feita após implantar essa correção.

@@ -69,6 +69,32 @@ test("relatório inclui páginas de radiografias e aceita acentos clínicos", as
   assert.ok(loaded.getPages()[1].node.Resources()?.get);
 });
 
+test("relatório preserva JPEG de uma fatia de Buffer e incorpora logotipo JPEG", async () => {
+  const encoded = await sharp({ create: { width: 16, height: 16, channels: 3, background: "#96aab4" } }).jpeg().toBuffer();
+  // Blob streams can produce pooled Buffer views whose backing buffer contains unrelated bytes.
+  const backing = Buffer.alloc(encoded.length + 64, 0x5a);
+  encoded.copy(backing, 32);
+  const image = backing.subarray(32, 32 + encoded.length);
+  assert.notEqual(image.byteOffset, 0);
+  assert.notEqual(new Uint8Array(image.buffer)[0], 0xff);
+  const report = await buildClinicalReport({
+    profile: { name: "Profissional Fictícia", logo_data_url: `data:image/jpeg;base64,${encoded.toString("base64")}` },
+    patient: { name: "Paciente fictício" }, visits: [],
+    radiographs: [{ image, caption: "Imagem artificial de teste", created_at: "2026-10-26T10:00:00Z" }],
+  });
+  const loaded = await PDFDocument.load(report);
+  assert.equal(loaded.getPageCount(), 2);
+  const images = loaded.context.enumerateIndirectObjects().map(([, object]) => object).filter(
+    (object): object is PDFRawStream => object instanceof PDFRawStream && object.dict.get(PDFName.of("Subtype")) === PDFName.of("Image"),
+  );
+  assert.equal(images.length, 2, "O logotipo e a radiografia precisam estar incorporados.");
+  for (const embedded of images) {
+    assert.equal(embedded.dict.get(PDFName.of("Width"))?.toString(), "16");
+    assert.equal(embedded.dict.get(PDFName.of("Height"))?.toString(), "16");
+    assert.deepEqual(Buffer.from(embedded.getContents()), encoded, "O PDF deve conter somente os bytes da imagem, sem o prefixo ou sufixo do Buffer.");
+  }
+});
+
 test("documento pagina conteúdo longo sem descartar parágrafos ou falhar com palavras extensas", async () => {
   const result = await buildDocumentPdf({
     profile: { name: "Profissional de Teste", address: "Endereço fictício" },
