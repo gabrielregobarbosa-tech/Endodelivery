@@ -15,6 +15,8 @@ Em 26/10, após a publicação da correção OIDC, a produção passou a respond
 
 Esse teste revelou uma falha específica no relatório com imagem: o relatório sem imagem retornou 200, e com um JPEG artificial retornou 500, referência `a5d6d0f2-2c7c-4ab5-b135-d1b68c88bb5c`. A reprodução local identificou que `pdf-lib` lê o buffer de memória inteiro de um JPEG, ignorando o deslocamento de uma fatia de `Buffer`. O leitor de Blob pode retornar uma dessas fatias para imagens pequenas. A correção copia os bytes exatos para uma `Uint8Array` antes de incorporar radiografias e logotipos, preservando os arquivos e suas dimensões. O teste de regressão falhou no código anterior com `SOI not found in JPEG` e passou com a correção.
 
+Após a implantação de `494ac24`, o teste no endereço publicado passou integralmente: relatório sem imagem e com imagem (200), documento PDF (200), perfil com logotipo (200), ficha com canal (201), agenda/status (201/200), cadastro/login (201/200) e persistência em nova sessão. A imagem continuou privada (200 autenticado, 401 anônimo). A exclusão final removeu paciente, imagem, atendimento, documento e compromisso; paciente e imagem passaram a responder 404, e as listas da conta fictícia ficaram vazias. A causa foi corrigida e o resultado foi confirmado em produção, sem usar dados reais.
+
 ## Alterações
 
 - PostgreSQL por `DATABASE_URL`/`POSTGRES_URL`, transações com cliente reservado e migrações coordenadas entre inicializações simultâneas. SQLite local e registros antigos da versão 1 continuam suportados fora da Vercel.

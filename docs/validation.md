@@ -59,4 +59,22 @@ O PostgreSQL não foi alterado nesta correção. Os testes com PostgreSQL real d
 
 Após a implantação OIDC, o banco, cadastro, perfil, pacientes, upload/leitura de imagem privada, recusa de acesso anônimo, logout/login e persistência em nova sessão foram verificados no endereço publicado. Pacientes e imagens artificiais foram excluídos ao final e a remoção foi confirmada por respostas 404. As contas técnicas de teste permanecem sem dados clínicos e sem credenciais padrão.
 
-O relatório sem imagem passou, mas o relatório com JPEG artificial expôs uma falha de interpretação de fatias de `Buffer` no parser JPEG de `pdf-lib`. O mesmo erro foi reproduzido localmente, inclusive com o buffer retornado pelo leitor de Blob. A incorporação agora recebe uma cópia exata dos bytes, tanto para radiografias como para logotipos. O teste de regressão verifica conteúdo e dimensões dos dois objetos JPEG no PDF serializado; ele falhava antes da correção. Os nove testes de PDF passaram após a alteração. `npm run check` passou com lint, TypeScript e **45 testes**, e `npm run build` passou com o servidor standalone preparado. A confirmação no endereço publicado deve ser feita após implantar essa correção.
+O relatório sem imagem passou, mas o relatório com JPEG artificial expôs uma falha de interpretação de fatias de `Buffer` no parser JPEG de `pdf-lib`. O mesmo erro foi reproduzido localmente, inclusive com o buffer retornado pelo leitor de Blob. A incorporação agora recebe uma cópia exata dos bytes, tanto para radiografias como para logotipos. O teste de regressão verifica conteúdo e dimensões dos dois objetos JPEG no PDF serializado; ele falhava antes da correção. Os nove testes de PDF passaram após a alteração. `npm run check` passou com lint, TypeScript e **45 testes**, e `npm run build` passou com o servidor standalone preparado.
+
+Após publicar `494ac24`, a execução no endereço de produção concluiu com sucesso:
+
+| Fluxo com dados artificiais | Resultado |
+| --- | --- |
+| Banco e migrações | 200, banco pronto |
+| Cadastro, perfil e logotipo PNG | 201 / 200 / 200; grafia preservada |
+| Paciente e ficha com odontometria/LAF | 201 / 201 |
+| Compromisso e mudança de status | 201 / 200 |
+| Modelos, emissão de documento e PDF | 200 / 201 / 200 |
+| Relatório sem imagem | 200, arquivo PDF válido |
+| Imagem privada e relatório com imagem | 201 / 200 / 200, JPEG e PDF válidos |
+| Imagem sem autenticação | 401 |
+| Logout, sessão encerrada e novo login | 200 / 401 / 200 |
+| Dados e imagem em nova sessão | 200, vínculos persistidos |
+| Remoção final dos dados clínicos artificiais | 200; paciente/imagem 404, documentos e agenda vazios |
+
+Essa execução usa a API pública do site com contas fictícias próprias e o Blob real conectado, demonstrando as operações autorizadas e a proteção pelo aplicativo. Não houve acesso ao painel administrativo, aos logs ou aos valores de credenciais. A validação em Safari/iPhone físico continua pendente; a navegação visual foi validada em Chromium.
